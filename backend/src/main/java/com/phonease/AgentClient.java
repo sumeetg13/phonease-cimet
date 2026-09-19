@@ -17,6 +17,9 @@ public class AgentClient {
         client = RestClient.builder().baseUrl(url).requestFactory(factory).defaultHeader("Authorization", "Bearer " + token).build();
     }
     public JsonNode scripts() { return client.get().uri("/scripts").retrieve().body(JsonNode.class); }
+    public byte[] speech(String text) {
+        return client.post().uri("/speech").body(java.util.Map.of("text",text)).retrieve().body(byte[].class);
+    }
     public JsonNode post(String path, Object body) {
         return client.post().uri(path).body(body).retrieve().body(JsonNode.class);
     }

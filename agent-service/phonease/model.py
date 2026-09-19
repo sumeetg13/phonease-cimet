@@ -11,8 +11,11 @@ SCHEMA={'type':'object','additionalProperties':False,'properties':{
     'signals':{'type':'array','items':{'type':'object','additionalProperties':False,'properties':{
         'label':{'type':'string','enum':LABELS},
         'severity':{'type':'string','enum':SEVERITIES},
-        'evidence':{'type':'string'}},'required':['label','severity','evidence']}}},
-    'required':['value','signals','sentiment']}
+        'evidence':{'type':'string'}},'required':['label','severity','evidence']}},
+    'confirmation':{'anyOf':[{'type':'null'},{'type':'object','additionalProperties':False,'properties':{
+        'answer':{'type':'string','enum':['yes','no','unclear']},
+        'confidence':{'type':'number','minimum':0,'maximum':1}},'required':['answer','confidence']}]}},
+    'required':['value','signals','sentiment','confirmation']}
 
 class OpenAIExtractor:
     def __init__(self):
@@ -41,6 +44,9 @@ class OpenAIExtractor:
                 'Return at most 8 distinct signals. Never predict a diagnosis or protected characteristic. '
                 'Only propose a field value when stage is collecting; otherwise value=null. Boolean values are '
                 'strings true/false; enum values exactly match the field schema. Never infer consent or submit approval. '
-                'If no signals, return an empty array. Do not include an action or confidence probability.')
+                'When stage is confirming or review, classify whether the caller is affirming or rejecting the '
+                'read-back question in context: confirmation.answer is yes, no, or unclear, with a confidence 0..1 '
+                'reflecting how clearly the caller meant it, judging paraphrase and tone, not fixed keywords. '
+                'Otherwise confirmation=null. If no signals, return an empty array. Do not include an action.')
         payload={'context':context,'requested_field':FIELDS.get(field),'caller_turn':text}
         return validate_analysis(self.chain.invoke([('system',prompt),('human',json.dumps(payload))]),text)

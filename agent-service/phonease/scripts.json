@@ -1,8 +1,31 @@
 {
-  "version": "energy-demo-v2",
-  "notice": "Draft Energy scripts based on the brief only. Five demo fields are assumptions, pending the recording and official field list.",
-  "opening": "Hello, I'm the automated Phonease Energy assistant. This is a synthetic demo. With your permission, we will process and save a transcript; audio is not recorded by this prototype. May I continue?",
+  "version": "energy-demo-v4",
+  "notice": "Draft Energy comparison scripts based on docs/energy-plan-comparison-data-flow.md. Fields cover the caller's name, supply location, current provider, usage profile and infrastructure add-ons. NMI lookup, CDR smart-meter data sharing, exact bill/feed-in-tariff figures and contact email/phone capture are out of scope for a voice-only demo and are approximated with bucketed ranges or omitted; the official field list and sandbox schema have not been supplied.",
+  "opening": [
+    "Hello, I'm the automated AI Phonease Energy assistant. This is a synthetic demo. With your permission, we will process and save a transcript; May I continue?",
+    "Hi there, I'm an AI agent from Phonease, here to help with your energy journey. This is a synthetic demo — with your permission I'll process and save a transcript. Is that okay to continue?",
+    "Hey, I'm Phonease's automated energy assistant, an AI agent here to assist with your energy journey. This is a synthetic demo; with your permission we'll process and save a transcript. May I go ahead?",
+    "Good day, this is the Phonease AI energy assistant calling. It's a synthetic demo, so with your consent we'll process and save a transcript. Are you happy for me to continue?"
+  ],
   "fields": [
+    {
+      "key": "name",
+      "label": "Caller name",
+      "question": "May I get your full name, please?",
+      "type": "text",
+      "section": "identity",
+      "purpose": "Personalize the rest of the call. No identity verification is performed against this name.",
+      "clarification": "Sorry, I didn't catch a name there — could you say your full name for me?",
+      "confirmation": "I have your name as {value}. Is that correct?",
+      "validation": {
+        "description": "A spoken name; letters, spaces, hyphens and apostrophes only, not verified against any record."
+      },
+      "aliases": {},
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    },
     {
       "key": "postcode",
       "label": "Supply postcode",
@@ -112,39 +135,6 @@
       "capture_policy": "propose_validate_read_back_confirm"
     },
     {
-      "key": "solar",
-      "label": "Solar panels",
-      "question": "Does the property have solar panels?",
-      "type": "boolean",
-      "section": "property",
-      "purpose": "Record whether solar panels are present at the property.",
-      "clarification": "Are there solar panels installed at this property? Please say yes or no.",
-      "confirmation": "Solar panels at the property: {value}. Is that correct?",
-      "validation": {
-        "description": "Explicit true or false; an unknown answer must not become false."
-      },
-      "aliases": {
-        "true": [
-          "yes",
-          "we do",
-          "there are solar panels",
-          "we have solar",
-          "i have solar"
-        ],
-        "false": [
-          "no",
-          "we don't have solar",
-          "there are no solar panels",
-          "no solar",
-          "no panels"
-        ]
-      },
-      "required": true,
-      "max_failed_attempts": 2,
-      "unknown_action": "clarify_then_handoff",
-      "capture_policy": "propose_validate_read_back_confirm"
-    },
-    {
       "key": "moving",
       "label": "Moving home",
       "question": "Are you moving into this property?",
@@ -177,39 +167,493 @@
       "max_failed_attempts": 2,
       "unknown_action": "clarify_then_handoff",
       "capture_policy": "propose_validate_read_back_confirm"
+    },
+    {
+      "key": "current_provider",
+      "label": "Current provider",
+      "question": "Who is your current energy retailer — for example AGL, Origin, EnergyAustralia, Alinta Energy, or Red Energy?",
+      "type": "enum",
+      "choices": [
+        "agl",
+        "origin",
+        "energyaustralia",
+        "alinta energy",
+        "red energy",
+        "other"
+      ],
+      "section": "supplier",
+      "purpose": "Identify the current retailer so any comparison is measured against the right baseline.",
+      "clarification": "Which company currently supplies your energy? Say the name, or say other if it's not AGL, Origin, EnergyAustralia, Alinta Energy or Red Energy.",
+      "confirmation": "Your current provider is {value}. Is that correct?",
+      "validation": {
+        "description": "One of the listed retailers, or other."
+      },
+      "aliases": {
+        "agl": [
+          "agl"
+        ],
+        "origin": [
+          "origin",
+          "origin energy"
+        ],
+        "energyaustralia": [
+          "energyaustralia",
+          "energy australia"
+        ],
+        "alinta energy": [
+          "alinta",
+          "alinta energy"
+        ],
+        "red energy": [
+          "red energy",
+          "red"
+        ],
+        "other": [
+          "other",
+          "someone else",
+          "a different provider",
+          "not sure",
+          "i'm not sure",
+          "i don't know",
+          "do not know"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    },
+    {
+      "key": "has_bill",
+      "label": "Recent bill available",
+      "question": "Do you have a recent energy bill handy?",
+      "type": "boolean",
+      "section": "usage",
+      "purpose": "Route to the most accurate usage source available: a recent bill, or a household estimate.",
+      "clarification": "Do you have a recent bill in front of you right now? Please say yes or no.",
+      "confirmation": "Recent bill available: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "i have one",
+          "i have a bill",
+          "i've got one"
+        ],
+        "false": [
+          "no",
+          "i don't have one",
+          "i don't have a bill",
+          "not with me"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    },
+    {
+      "key": "bill_range",
+      "label": "Recent bill amount",
+      "question": "Roughly, was your last bill under 200 dollars, 200 to 400, 400 to 600, or over 600 dollars?",
+      "type": "enum",
+      "choices": [
+        "under 200",
+        "200 to 400",
+        "400 to 600",
+        "over 600"
+      ],
+      "section": "usage",
+      "purpose": "Approximate spend as a proxy for usage when a caller has a bill on hand.",
+      "clarification": "Was it under 200 dollars, 200 to 400, 400 to 600, or over 600 dollars?",
+      "confirmation": "Your last bill was roughly {value} dollars. Is that correct?",
+      "validation": {
+        "description": "One of the four listed ranges."
+      },
+      "aliases": {
+        "under 200": [
+          "under 200",
+          "less than 200",
+          "under two hundred"
+        ],
+        "200 to 400": [
+          "200 to 400",
+          "two hundred to four hundred",
+          "between 200 and 400"
+        ],
+        "400 to 600": [
+          "400 to 600",
+          "four hundred to six hundred",
+          "between 400 and 600"
+        ],
+        "over 600": [
+          "over 600",
+          "more than 600",
+          "over six hundred"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm",
+      "depends_on": {
+        "field": "has_bill",
+        "equals": true
+      }
+    },
+    {
+      "key": "household_size",
+      "label": "Household size",
+      "question": "No problem — roughly how many people live in the home: one to two, three to four, or five or more?",
+      "type": "enum",
+      "choices": [
+        "one to two",
+        "three to four",
+        "five or more"
+      ],
+      "section": "usage",
+      "purpose": "Estimate usage from household size when no bill is available.",
+      "clarification": "Roughly how many people live in the home — one to two, three to four, or five or more?",
+      "confirmation": "About {value} people live in the home. Is that correct?",
+      "validation": {
+        "description": "One of the three listed household sizes."
+      },
+      "aliases": {
+        "one to two": [
+          "one to two",
+          "one or two",
+          "just me",
+          "just us two",
+          "one",
+          "two"
+        ],
+        "three to four": [
+          "three to four",
+          "three or four",
+          "three",
+          "four"
+        ],
+        "five or more": [
+          "five or more",
+          "five",
+          "six",
+          "a big family"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm",
+      "depends_on": {
+        "field": "has_bill",
+        "equals": false
+      }
+    },
+    {
+      "key": "has_pool",
+      "label": "Swimming pool",
+      "question": "Do you have a swimming pool at the property?",
+      "type": "boolean",
+      "section": "usage",
+      "purpose": "Pool pumps are a major, steady load; flags likely higher usage.",
+      "clarification": "Is there a swimming pool at the property? Please say yes or no.",
+      "confirmation": "Swimming pool at the property: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "we have a pool",
+          "there's a pool"
+        ],
+        "false": [
+          "no",
+          "no pool",
+          "we don't have a pool"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm",
+      "depends_on": {
+        "field": "has_bill",
+        "equals": false
+      }
+    },
+    {
+      "key": "has_ducted_ac",
+      "label": "Ducted air conditioning",
+      "question": "Do you have ducted air conditioning?",
+      "type": "boolean",
+      "section": "usage",
+      "purpose": "Ducted air conditioning is a major seasonal load; flags likely higher usage.",
+      "clarification": "Is there ducted air conditioning installed? Please say yes or no.",
+      "confirmation": "Ducted air conditioning: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "we have ducted",
+          "we have ducted air conditioning"
+        ],
+        "false": [
+          "no",
+          "no ducted air conditioning",
+          "we don't have ducted"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm",
+      "depends_on": {
+        "field": "has_bill",
+        "equals": false
+      }
+    },
+    {
+      "key": "has_ev",
+      "label": "Electric vehicle",
+      "question": "Do you have an electric vehicle you charge at home?",
+      "type": "boolean",
+      "section": "usage",
+      "purpose": "Home EV charging is a major load; flags likely higher usage.",
+      "clarification": "Do you charge an electric vehicle at home? Please say yes or no.",
+      "confirmation": "Electric vehicle charged at home: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "we have an ev",
+          "we charge an electric car"
+        ],
+        "false": [
+          "no",
+          "no electric vehicle",
+          "we don't have an ev"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm",
+      "depends_on": {
+        "field": "has_bill",
+        "equals": false
+      }
+    },
+    {
+      "key": "solar",
+      "label": "Solar panels",
+      "question": "Does the property have solar panels?",
+      "type": "boolean",
+      "section": "solar",
+      "purpose": "Record whether solar panels are present at the property.",
+      "clarification": "Are there solar panels installed at this property? Please say yes or no.",
+      "confirmation": "Solar panels at the property: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false; an unknown answer must not become false."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "we do",
+          "there are solar panels",
+          "we have solar",
+          "i have solar"
+        ],
+        "false": [
+          "no",
+          "we don't have solar",
+          "there are no solar panels",
+          "no solar",
+          "no panels"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    },
+    {
+      "key": "solar_size",
+      "label": "Solar system size",
+      "question": "Roughly what size is the solar system — under 5 kilowatts, 5 to 10 kilowatts, or over 10 kilowatts?",
+      "type": "enum",
+      "choices": [
+        "under 5kw",
+        "5 to 10kw",
+        "over 10kw"
+      ],
+      "section": "solar",
+      "purpose": "Approximate solar export capacity to help scope feed-in-tariff sensitive plans.",
+      "clarification": "Is the solar system under 5 kilowatts, 5 to 10 kilowatts, or over 10 kilowatts?",
+      "confirmation": "The solar system is roughly {value}. Is that correct?",
+      "validation": {
+        "description": "One of the three listed size ranges."
+      },
+      "aliases": {
+        "under 5kw": [
+          "under 5",
+          "under 5kw",
+          "small",
+          "less than 5 kilowatts"
+        ],
+        "5 to 10kw": [
+          "5 to 10",
+          "5 to 10kw",
+          "medium",
+          "five to ten kilowatts"
+        ],
+        "over 10kw": [
+          "over 10",
+          "over 10kw",
+          "large",
+          "more than 10 kilowatts"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm",
+      "depends_on": {
+        "field": "solar",
+        "equals": true
+      }
+    },
+    {
+      "key": "concession_card",
+      "label": "Concession card",
+      "question": "Do you hold a Pensioner Concession Card or a Health Care Card?",
+      "type": "boolean",
+      "section": "concession",
+      "purpose": "Identify concession card eligibility for potential state government rebates.",
+      "clarification": "Do you hold a Pensioner Concession Card or a Health Care Card? Please say yes or no.",
+      "confirmation": "Concession card holder: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "i have one",
+          "i hold a concession card",
+          "i have a health care card"
+        ],
+        "false": [
+          "no",
+          "i don't have one",
+          "no concession card"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
     }
   ],
   "status": "draft-assumptions",
   "source_material": {
     "recording": "not supplied",
     "official_field_list": "not supplied",
-    "sandbox_schema": "not supplied"
+    "sandbox_schema": "not supplied",
+    "comparison_data_flow": "docs/energy-plan-comparison-data-flow.md"
   },
   "sections": [
     {
+      "id": "identity",
+      "title": "Introduction",
+      "intro": [
+        "Let's start with a quick introduction.",
+        "First, a quick introduction.",
+        "To start, let's get acquainted."
+      ],
+      "purpose": "Personalize the call with the caller's name before the journey begins."
+    },
+    {
       "id": "supply",
       "title": "Energy supply",
-      "intro": "Let's pick up with the energy supply details.",
+      "intro": [
+        "Let's pick up with the energy supply details.",
+        "First, let's sort out your energy supply details.",
+        "To start, I just need a couple of details about your energy supply."
+      ],
       "purpose": "Establish the supply area and energy types to collect for this demo."
     },
     {
       "id": "property",
       "title": "Property details",
-      "intro": "Next, a couple of details about the property.",
-      "purpose": "Collect occupancy and solar information without giving product advice."
+      "intro": [
+        "Next, a couple of details about the property.",
+        "Now let's cover a couple of things about the property.",
+        "Moving on, I have a couple of quick property questions."
+      ],
+      "purpose": "Collect occupancy information without giving product advice."
     },
     {
       "id": "move",
       "title": "Moving plans",
-      "intro": "Finally, let's check whether this is a move.",
+      "intro": [
+        "Next, let's check whether this is a move.",
+        "Let's confirm whether this is for a move.",
+        "One quick check: is this journey related to a move?"
+      ],
       "purpose": "Identify whether the caller is moving; no dates or commitments are inferred."
+    },
+    {
+      "id": "supplier",
+      "title": "Current provider",
+      "intro": [
+        "Now, a quick question about your current energy provider.",
+        "Next, let's confirm who currently supplies your energy.",
+        "Let's cover your current energy provider."
+      ],
+      "purpose": "Identify the current retailer so any comparison is measured against the right baseline."
+    },
+    {
+      "id": "usage",
+      "title": "Usage profile",
+      "intro": [
+        "Now let's get a sense of your energy usage.",
+        "Next, a couple of questions about how much energy you use.",
+        "Let's talk about your typical energy usage."
+      ],
+      "purpose": "Estimate usage from a recent bill where available, or a household profile otherwise."
+    },
+    {
+      "id": "solar",
+      "title": "Solar",
+      "intro": [
+        "Now, let's cover solar.",
+        "A quick question about solar panels.",
+        "Let's check on solar at the property."
+      ],
+      "purpose": "Record solar presence and approximate system size."
+    },
+    {
+      "id": "concession",
+      "title": "Concession eligibility",
+      "intro": [
+        "Last, a question about concession eligibility.",
+        "One final question about concession cards.",
+        "Almost done — just a concession card question."
+      ],
+      "purpose": "Identify concession card eligibility for potential rebates."
     }
   ],
   "messages": {
     "resume": "We'll keep the details you already confirmed and ask only what's missing.",
-    "review": "Please review: {summary}. May I submit this demo Energy journey? Say yes to submit, or say change followed by the field name.",
-    "review_clarification": "Say yes to submit, or say change followed by one of these fields: {field_names}.",
-    "submit_question": "May I submit the demo journey?",
+    "review": "Please review: {summary}. Should we submit these details for further processing? Say yes to submit, or say change followed by the field name.",
+    "review_clarification": "Say yes to submit these details for further processing, or say change followed by one of these fields: {field_names}.",
+    "submit_question": "Should we submit these details for further processing?",
     "consent_question": "May I continue with transcript processing?",
     "consent_clarification": "May I process and save a transcript to continue? Please say yes or no.",
     "correction": "Let's correct that. {question}",
@@ -223,8 +667,8 @@
     "suppressed": "Understood. I've marked this lead do-not-call. Thank you. Goodbye.",
     "declined": "Understood. I will end the call. Thank you. Goodbye.",
     "busy": "Understood. I will end the call and leave a follow-up request for the team. No callback time has been booked. Goodbye.",
-    "completed": "Your demo Energy journey has been submitted successfully. No energy plan has been purchased or switched. Thank you. Goodbye.",
-    "submit_declined": "I will not submit this journey. Thank you. Goodbye.",
+    "completed": "Thank you. Your details have been submitted for further processing, and a receipt with the call summary is now available. This is a synthetic demo: no energy plan has been purchased or switched. Goodbye.",
+    "submit_declined": "No problem, I will not submit these details for further processing. A summary of the call is still available for you. Thank you. Goodbye.",
     "unavailable": "A specialist is unavailable. I will leave the context for the team to review. No callback time is booked. Thank you. Goodbye."
   }
 }

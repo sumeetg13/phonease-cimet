@@ -10,7 +10,10 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from .core import TERMINAL, FIELDS, display
 
 def xml(root): return tostring(root,encoding='unicode')
-def say(root,text): SubElement(root,'Say',{'language':'en-AU'}).text=text
+def say(root,text,voice=None):
+    attrs={'language':'en-AU'}
+    if voice: attrs['voice']=voice
+    SubElement(root,'Say',attrs).text=text
 
 def signature_valid(url, params, signature, token):
     # Form params preserve multiple values; Twilio sorts unique values for each key.
@@ -25,6 +28,8 @@ class Twilio:
         self.account=os.getenv('TWILIO_ACCOUNT_SID','')
         self.human=os.getenv('HUMAN_TEST_NUMBER','')
         self.allowed=set(x.strip() for x in os.getenv('TEST_NUMBERS','').split(',') if x.strip())
+        # Neural Polly voice by default for a more natural call; empty falls back to Twilio's standard voice.
+        self.voice=os.getenv('TWILIO_VOICE','Polly.Olivia-Neural')
 
     def url(self,path,s,**extra):
         return self.base+path+'?'+urllib.parse.urlencode({'sid':s['id'],**extra})
@@ -32,7 +37,7 @@ class Twilio:
     def response(self,s):
         root=Element('Response')
         if s['state']=='handoff_pending':
-            say(root,s['message'])
+            say(root,s['message'],self.voice)
             if not self.human or self.human not in self.allowed:
                 # Execute fallback via signed webhook, so durable state matches speech.
                 SubElement(root,'Redirect',{'method':'POST'}).text=self.url('/twilio/unavailable',s)
@@ -40,12 +45,12 @@ class Twilio:
                 dial=SubElement(root,'Dial',{'answerOnBridge':'true','timeout':'20','action':self.url('/twilio/dial-result',s),'method':'POST'})
                 SubElement(dial,'Number',{'url':self.url('/twilio/whisper',s),'method':'POST'}).text=self.human
         elif s['state'] in TERMINAL:
-            say(root,s['message']); SubElement(root,'Hangup')
+            say(root,s['message'],self.voice); SubElement(root,'Hangup')
         else:
             gather=SubElement(root,'Gather',{'input':'speech','language':'en-AU','speechTimeout':'auto',
                 'timeout':'7','actionOnEmptyResult':'true','method':'POST',
                 'action':self.url('/twilio/turn',s,revision=s['revision'])})
-            say(gather,s['message'])
+            say(gather,s['message'],self.voice)
         return xml(root)
 
     def whisper(self,s):
@@ -55,7 +60,7 @@ class Twilio:
         gather=SubElement(root,'Gather',{'input':'dtmf','numDigits':'1','timeout':'10','actionOnEmptyResult':'true',
             'action':self.url('/twilio/accept',s),'method':'POST'})
         say(gather,'Synthetic Phonease Energy recovery. Reason: '+h['reason'].replace('_',' ')+'. '+summary+
-            '. Consent recorded: '+str(h['consent'])+'. Please do not ask the customer to repeat confirmed details. Press 1 to accept, or 2 to decline.')
+            '. Consent recorded: '+str(h['consent'])+'. Please do not ask the customer to repeat confirmed details. Press 1 to accept, or 2 to decline.',self.voice)
         SubElement(root,'Hangup')
         return xml(root)
 

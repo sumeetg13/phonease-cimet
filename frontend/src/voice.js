@@ -1,7 +1,9 @@
 /* Conversational pacing for browser TTS. Voice quality depends on installed voices. */
 export default class ConversationalVoice {
-    constructor({synthesis, Utterance, schedule = (fn, ms) => setTimeout(fn, ms), unschedule = id => clearTimeout(id)}) {
+    constructor({synthesis, Utterance, onDone = () => {},
+      schedule = (fn, ms) => setTimeout(fn, ms), unschedule = id => clearTimeout(id)}) {
       this.synthesis = synthesis;
+      this.onDone = onDone; // The caller's turn: fired only when a reply finishes on its own.
       this.Utterance = Utterance;
       this.schedule = schedule;
       this.unschedule = unschedule;
@@ -59,7 +61,7 @@ export default class ConversationalVoice {
           if (index + 1 < phrases.length) {
             const pause = /;$/.test(phrase) ? 300 : /\?$/.test(phrase) ? 650 : 520;
             this.timer = this.schedule(() => next(index + 1), pause);
-          }
+          } else this.onDone();
         };
         utterance.onerror = () => {
           if (generation === this.generation) this.cancel();
@@ -68,5 +70,6 @@ export default class ConversationalVoice {
       };
       // Let the caller finish and give the reply a short, conversational beat.
       if (phrases.length) this.timer = this.schedule(() => next(0), 700);
+      else this.onDone();
     }
   }

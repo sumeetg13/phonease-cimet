@@ -18,9 +18,12 @@ services:
       AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:?Run scripts/setup.py}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini-2025-04-14}
+      OPENAI_TTS_MODEL: ${OPENAI_TTS_MODEL:-gpt-4o-mini-tts}
+      OPENAI_TTS_VOICE: ${OPENAI_TTS_VOICE:-marin}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       HUMAN_TEST_NUMBER: ${HUMAN_TEST_NUMBER:-}
       TEST_NUMBERS: ${TEST_NUMBERS:-}
+      TWILIO_VOICE: ${TWILIO_VOICE-Polly.Olivia-Neural}
       LANGSMITH_TRACING: 'false'
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]

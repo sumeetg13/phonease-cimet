@@ -3,12 +3,14 @@ import os
 import secrets
 from typing import Any, Literal, TypedDict
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, START, END
 from .core import Store, Supervisor
 from .model import OpenAIExtractor
 from .script_registry import SCRIPTS
 from .telephony import Twilio
+from .speech import synthesize
 
 app = FastAPI(title='Phonease agent service', docs_url=None, redoc_url=None)
 
@@ -87,3 +89,11 @@ class RenderRequest(BaseModel):
 def twiml(request: RenderRequest):
     adapter = Twilio()
     return {'xml': adapter.whisper(request.session) if request.whisper else adapter.response(request.session)}
+
+class SpeechRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4096)
+
+@app.post('/speech', dependencies=[Depends(authorize)])
+def speech(request: SpeechRequest):
+    if not request.text.strip(): raise HTTPException(400, 'Speech text is empty')
+    return Response(synthesize(request.text), media_type='audio/mpeg', headers={'Cache-Control':'no-store'})

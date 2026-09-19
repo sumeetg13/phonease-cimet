@@ -9,7 +9,7 @@ class StubModel:
         self.labels=labels;self.severity=severity;self.sentiment=sentiment;self.value=value;self.calls=[]
     def analyze(self,field,text,context):
         self.calls.append((field,text,context))
-        return {'value':self.value,'sentiment':self.sentiment,
+        return {'value':self.value,'sentiment':self.sentiment,'confirmation':None,
             'signals':[{'label':label,'severity':self.severity,'evidence':text} for label in self.labels]}
 
 class SignalTests(unittest.TestCase):
@@ -33,13 +33,15 @@ class SignalTests(unittest.TestCase):
         self.a.model=StubModel();self.turn('maybe');self.assertFalse(self.a.model.calls)
         self.assertEqual(self.s['analysis']['model_status'],'consent_required')
     def test_contextual_model_during_confirmation(self):
-        self.turn('yes');self.turn('2000');self.a.model=StubModel(['human'])
+        self.turn('yes');self.turn('Alex Taylor');self.turn('yes');self.turn('2000')
+        self.a.model=StubModel(['human'])
         self.turn('Could a colleague take it from here?')
         self.assertEqual(self.s['state'],'handoff_pending')
         self.assertEqual(self.a.model.calls[0][2]['stage'],'confirming')
-        self.assertIsNone(self.a.model.calls[0][0]);self.assertFalse(self.s['fields'])
+        self.assertIsNone(self.a.model.calls[0][0]);self.assertNotIn('postcode',self.s['fields'])
     def test_model_during_review(self):
-        self.s=self.a.start(seed={'postcode':'2000','fuel':'gas','occupancy':'own','solar':False,'moving':False})
+        self.s=self.a.start(seed={'name':'Alex Taylor','postcode':'2000','fuel':'gas','occupancy':'own','moving':False,
+            'current_provider':'agl','has_bill':True,'bill_range':'under 200','solar':False,'concession_card':False})
         self.turn('yes');self.assertEqual(self.s['state'],'review')
         self.a.model=StubModel(['privacy']);self.turn('Who else will see these answers?')
         self.assertEqual(self.s['state'],'handoff_pending');self.assertIsNone(self.s['receipt'])
@@ -52,7 +54,8 @@ class SignalTests(unittest.TestCase):
         self.turn('No further ringing from your team; get a colleague to sort this mess')
         self.assertEqual(self.s['state'],'suppressed');self.assertEqual(len(self.s['analysis']['signals']),3)
     def test_negative_sentiment_alone_does_not_transfer(self):
-        self.turn('yes');self.a.model=StubModel(sentiment='negative',value='2000')
+        self.turn('yes');self.turn('Alex Taylor');self.turn('yes')
+        self.a.model=StubModel(sentiment='negative',value='2000')
         self.turn('My previous retailer treated me terribly; the postcode is 2000')
         self.assertEqual(self.s['state'],'confirming');self.assertEqual(self.s['analysis']['sentiment'],'negative')
     def test_model_payment_redacted_before_storage(self):
@@ -70,7 +73,7 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(self.s['handoff']['reason'],'frustration')
         self.assertEqual(self.s['handoff']['signals'][-1]['source'],'model')
     def test_mild_frustration_expires_outside_window(self):
-        self.turn('yes');self.turn('I am annoyed');self.turn('2000');self.turn('yes');self.turn('I am annoyed')
+        self.turn('yes');self.turn('I am annoyed');self.turn('Alex Taylor');self.turn('yes');self.turn('I am annoyed')
         self.assertEqual(self.s['state'],'collecting');self.assertEqual(self.s['anger_count'],1)
     def test_semantic_confusion_repairs_then_hands_over(self):
         self.turn('yes');self.a.model=StubModel(['confusion']);self.turn('That went over my head')
@@ -80,7 +83,8 @@ class SignalTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_analysis({'value':None,'sentiment':'neutral','signals':[{'label':'human','severity':'high','evidence':'invented'}]},'yes')
     def test_model_failure_blocks_final_submission(self):
-        self.s=self.a.start(seed={'postcode':'2000','fuel':'gas','occupancy':'own','solar':False,'moving':False})
+        self.s=self.a.start(seed={'name':'Alex Taylor','postcode':'2000','fuel':'gas','occupancy':'own','moving':False,
+            'current_provider':'agl','has_bill':True,'bill_range':'under 200','solar':False,'concession_card':False})
         self.turn('yes')
         class Broken:
             def analyze(self,*args): raise TimeoutError()

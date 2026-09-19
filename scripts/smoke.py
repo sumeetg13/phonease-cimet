@@ -33,7 +33,7 @@ def main():
         return request('/api/turn',{'session_id':s['id'],'text':text,'event_id':event or uuid.uuid4().hex,'revision':s['revision'] if revision is None else revision},expected)
     request('/health',auth=False)
     request('/api/scripts',auth=False,expected=401)
-    assert len(request('/api/scripts')['fields'])==5
+    assert len(request('/api/scripts')['fields'])==15
     if args.live:
         s=turn(start(),'yes')
         s=turn(s,'Could a colleague take it from here?')
@@ -48,16 +48,33 @@ def main():
     s=turn(s,'yes',event)
     duplicate=turn(s,'yes',event,revision=0)
     assert duplicate['revision']==s['revision']
-    turn(s,'2000',expected=400,revision=0)
-    for value in ['2000','electricity','rent','no','no']:
+    turn(s,'Alex Taylor',expected=400,revision=0)
+    # Caller name, then supply, provider, usage and add-on fields, each read back and confirmed.
+    for value in ['Alex Taylor','2000','electricity','rent','yes','agl','yes','under 200','no','no']:
         s=turn(s,value); assert s['state']=='confirming',s['state']
         s=turn(s,'yes')
     assert s['state']=='review'
+    assert 'submit these details for further processing' in s['message'],s['message']
+    assert s['receipt'] is None and s['summary'] is None   # Nothing is submitted before the caller agrees.
     s=turn(s,'change postcode'); s=turn(s,'3000'); s=turn(s,'yes'); s=turn(s,'yes')
     assert s['state']=='completed' and s['receipt']['payload']['fields']['postcode']=='3000'
     assert request('/api/sessions/'+s['id'])['receipt']['id']==s['receipt']['id']
     assert turn(s,'yes')['receipt']['id']==s['receipt']['id']
-    print('PASS: confirmation, correction, submission, persistent receipt, duplicate and stale turn protection')
+    print('PASS: confirmation, correction, submission consent, persistent receipt, duplicate and stale turn protection')
+    stored=request('/api/sessions/'+s['id'])
+    record=stored['summary']
+    assert record['outcome']=='completed' and record['receipt']['id']==s['receipt']['id']
+    spoken=[line['text'] for line in record['transcript']]
+    assert record['transcript'][0]['role']=='assistant' and '3000' in spoken
+    noted=[note['text'] for note in stored['notes']]
+    assert 'Supply postcode: 3000 (confirmed by the caller)' in noted,noted
+    assert any(note.startswith('Details submitted for further processing. Receipt') for note in noted)
+    # The receipt is the snapshot taken at submission: the goodbye line and outcome note follow it.
+    submitted=s['receipt']['payload']
+    assert submitted['transcript']==record['transcript'][:len(submitted['transcript'])]
+    assert submitted['notes']==stored['notes'][:len(submitted['notes'])]
+    assert len(record['transcript'])>len(submitted['transcript'])
+    print('PASS: live call notes, end-of-call record and a receipt carrying the transcript survive PostgreSQL')
     lead='synthetic-smoke-'+uuid.uuid4().hex
     s=turn(start(lead=lead),'stop calling me'); assert s['state']=='suppressed'
     request('/api/sessions',{'lead_id':lead},400)

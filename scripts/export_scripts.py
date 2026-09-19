@@ -8,17 +8,26 @@ lines=['# Energy recovery: shared human and AI script book','',
        'Generated from `agent-service/phonease/scripts.json`. Edit the registry, then run `./scripts/export_scripts.py`.', '',
        '**Version:** '+r['version']+' · **Status:** draft assumptions','',r['notice'],'',
        'The recording, official field list and sandbox schema have not been supplied. These scripts are not represented as derived from that missing material.', '',
-       '## Opening and consent','',r['opening'],'',
+       '## Opening and consent','',
+       'One variant is chosen at random per call; all convey the same disclosure and consent request.','']
+opening=r['opening'] if isinstance(r['opening'],list) else [r['opening']]
+lines+=['- '+v for v in opening]+['',
        'Do not collect journey fields before affirmative consent. Existing confirmed values are retained; only missing fields are asked. A section introduction is read once when entering that section.', '']
 for section in r['sections']:
-    lines+=['## '+section['title'],'', '**Section intent:** '+section['purpose'],'', '**Section script:** '+section['intro'],'']
+    intro=section['intro'] if isinstance(section['intro'],list) else [section['intro']]
+    lines+=['## '+section['title'],'', '**Section intent:** '+section['purpose'],'', '**Section script variants:**','']
+    lines+=['- '+v for v in intro]+['']
     for f in [f for f in r['fields'] if f['section']==section['id']]:
         lines+=['### '+f['label']+' (`'+f['key']+'`)','',
           '- **Collect:** '+f['purpose'], '- **Ask:** '+f['question'],
           '- **Clarify:** '+f['clarification'], '- **Read back:** '+f['confirmation'],
           '- **Validate:** '+f['validation']['description'],
-          '- **Failure limit:** '+str(f['max_failed_attempts'])+' failed attempts, then human handover.',
-          '- **Examples of accepted phrasing:** '+ '; '.join(' / '.join(v)+' → '+k for k,v in f['aliases'].items()),'']
+          '- **Failure limit:** '+str(f['max_failed_attempts'])+' failed attempts, then human handover.']
+        if f.get('aliases'):
+            lines+=['- **Examples of accepted phrasing:** '+ '; '.join(' / '.join(v)+' → '+k for k,v in f['aliases'].items())]
+        if f.get('depends_on'):
+            lines+=['- **Asked only if:** `'+f['depends_on']['field']+'` is '+str(f['depends_on']['equals']).lower()]
+        lines+=['']
 lines+=['## Final review','',r['messages']['review'],'',
         '`{summary}` is generated only from validated, confirmed fields. A final explicit yes permits mock submission. A named correction reopens that field. No plan purchase or switch is performed.','',
         '## Handover','',r['messages']['handoff'],'',

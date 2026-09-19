@@ -53,12 +53,20 @@ def detect(text):
 
 def validate_analysis(result, text):
     """Do not trust provider JSON or unconstrained model-generated explanations."""
-    if not isinstance(result, dict) or set(result) != {'value','signals','sentiment'}:
+    if not isinstance(result, dict) or set(result) != {'value','signals','sentiment','confirmation'}:
         raise ValueError('Invalid analysis shape')
     if result['value'] is not None and (not isinstance(result['value'], str) or len(result['value']) > 100):
         raise ValueError('Invalid candidate')
     if result['sentiment'] not in SENTIMENTS or not isinstance(result['signals'],list) or len(result['signals'])>8:
         raise ValueError('Invalid analysis labels')
+    confirmation = result['confirmation']
+    if confirmation is not None:
+        if not isinstance(confirmation, dict) or set(confirmation) != {'answer','confidence'}:
+            raise ValueError('Invalid confirmation shape')
+        if confirmation['answer'] not in ('yes','no','unclear'):
+            raise ValueError('Invalid confirmation answer')
+        if type(confirmation['confidence']) not in (int,float) or not 0<=confirmation['confidence']<=1:
+            raise ValueError('Invalid confirmation confidence')
     seen = set()
     for signal in result['signals']:
         if not isinstance(signal,dict) or set(signal) != {'label','severity','evidence'}:

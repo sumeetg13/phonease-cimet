@@ -28,3 +28,11 @@ test('a new reply invalidates old speech callbacks',()=>{
 test('reassuring speech is gentle and list items get short pauses',()=>{
   const f=fixture();f.player.speak("I'm sorry. Postcode: 2000; fuel: gas.");f.tick();assert.equal(f.spoken[0].rate,.84);f.spoken[0].onend();f.tick();f.spoken[1].onend();assert.equal([...f.pending.values()][0].ms,300);
 });
+test('the caller gets the turn back only when a reply finishes, never when it is interrupted',()=>{
+  const done=[];const f=fixture();f.player.onDone=()=>done.push('done');
+  f.player.speak('One. Two.');f.tick();f.spoken[0].onend();
+  assert.deepEqual(done,[]);f.tick();f.spoken[1].onend();
+  assert.deepEqual(done,['done']);
+  f.player.speak('Interrupted.');f.tick();const live=f.spoken.at(-1);f.player.cancel();live.onend();
+  assert.deepEqual(done,['done']);
+});

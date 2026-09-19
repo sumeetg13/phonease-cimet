@@ -8,9 +8,9 @@
 | Model connector | LangChain `langchain-openai` / ChatOpenAI, strict JSON Schema output |
 | Default model | `gpt-4.1-mini-2025-04-14`; configured only in the Python service |
 | User interface | React 19, JavaScript, CSS, Lucide icons, Vite 7 |
-| Browser voice | Web Speech recognition and speech synthesis APIs |
+| Browser voice | OpenAI neural TTS (`gpt-4o-mini-tts`, `marin`), Web Speech recognition; optional device speech synthesis |
 | Reverse proxy | Nginx, same-origin UI/API routing |
-| Telephony | Twilio Voice REST API, TwiML, HMAC-SHA1 webhooks |
+| Telephony | Twilio Voice REST API, TwiML with Polly Neural, HMAC-SHA1 webhooks |
 | Packaging | Docker multi-stage builds, Docker Compose |
 | Tests | Python unittest/FastAPI TestClient, JUnit 5, Node built-in tests, HTTP smoke checks |
 | Local scripts | Bash and Python 3.9+ |

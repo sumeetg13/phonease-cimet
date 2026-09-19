@@ -8,16 +8,63 @@ import time
 import uuid
 from .signals import detect, validate_analysis
 
-from .script_registry import SCRIPTS, FIELDS, SECTIONS, line
+from .script_registry import SCRIPTS, FIELDS, SECTIONS, line, pick
 TERMINAL = {'completed', 'declined', 'suppressed', 'human', 'callback', 'ended'}
-YES = re.compile(r'^(yes|yeah|yep|correct|that is correct|that\'s correct|sure|okay|ok|i agree|i consent|please continue|go ahead)[.! ,]*$', re.I)
-NO = re.compile(r'^(no|nope|nah|incorrect|wrong)[.! ,]*$', re.I)
+CONFIRM_CONFIDENCE = 0.75  # Below this, a model-read affirmation/rejection is treated as unclear, not silently accepted.
+
+# Local (offline) synonym vocabulary for yes/no. Split on comma/"and" so stacked casual
+# replies ("yeah, sure") still match, but every resulting clause must be a known phrase —
+# this keeps it conservative instead of doing keyword search over the whole sentence.
+YES_TERMS = {'yes','yeah','yeh','yea','yep','yup','sure','okay','ok','alright','all right',
+    'correct','definitely','absolutely','certainly','totally','affirmative','fine',
+    'that is correct',"that's correct",'i agree','i consent','please continue','go ahead',
+    'of course','sounds good',"that's fine",'no problem','why not','that works',
+    'works for me','fine by me','yes please','sure thing'}
+NO_TERMS = {'no','nope','nah','negative','incorrect','wrong',
+    "i don't agree",'i do not agree','not really','not at all','no way','i disagree'}
+# Live call notes, written as the call happens: outcomes and topics, never verbatim caller
+# speech, so a note is safe to keep before consent covers transcript storage.
+SIGNAL_NOTES = {
+    'sensitive': 'Raised hardship, a billing dispute or a vulnerability concern.',
+    'distress': 'Sounded distressed during the call.',
+    'privacy': 'Asked where their details came from.',
+    'accessibility': 'Asked for accessibility support with hearing or pace.',
+    'language': 'Asked to continue in another language.',
+    'busy': 'Said this was not a good time to talk.',
+    'payment': 'Offered payment details; these are never collected on this call.',
+    'off_script': 'Asked for a plan recommendation or advice.',
+    'anger': 'Sounded frustrated with the process.',
+    'confusion': 'Did not understand a question; it was rephrased.',
+    'technical': 'Reported a problem with the line.',
+    'human': 'Asked to speak to a person.',
+    'dnc': 'Asked not to be contacted again.',
+    'decline': 'Declined to continue.',
+}
+OUTCOME_NOTES = {
+    'completed': 'Details submitted for further processing.',
+    'declined': 'Caller declined; nothing was submitted.',
+    'suppressed': 'Added to the do-not-contact list; nothing was submitted.',
+    'callback': 'Call ended for a call back later; nothing was submitted.',
+    'ended': 'Call ended; nothing was submitted.',
+}
+NAME_PATTERN = re.compile(r"[A-Za-z]+(?:[ '\-][A-Za-z]+)*")
+NAME_PREFIXES = ("my name is ","i am ","i'm ","this is ","it's ","it is ","call me ","name's ")
 
 def now():
     return round(time.time(), 3)
 
 def norm(text):
     return re.sub(r'\s+', ' ', text.lower().replace('’', "'")).strip()
+
+def polarity_match(text, terms):
+    t = norm(text).strip(' .!')
+    if not t: return False
+    clauses = [c.strip(' .!,') for c in re.split(r',|\band\b', t)]
+    clauses = [c for c in clauses if c]
+    return bool(clauses) and all(c in terms for c in clauses)
+
+def is_yes(text): return polarity_match(text, YES_TERMS)
+def is_no(text): return polarity_match(text, NO_TERMS)
 
 def signals(text):
     return [item['label'] for item in detect(text)]
@@ -48,18 +95,41 @@ def parse_value(field, text):
         found = [x for x in FIELDS[field]['choices'] if re.search(r'\b'+x+r'\b', t)]
         if len(found) == 1 and not re.search(r"\b(no|not|don't|do not)\b", t): return found[0]
     if typ == 'boolean':
-        if YES.fullmatch(t): return True
-        if NO.fullmatch(t): return False
+        if is_yes(t): return True
+        if is_no(t): return False
+    if typ == 'text':
+        for prefix in NAME_PREFIXES:
+            if t.startswith(prefix):
+                t = t[len(prefix):]
+                break
+        candidate = ' '.join(w.capitalize() for w in t.split())
+        if candidate and valid(field, candidate): return candidate
     return None
 
 def valid(field, value):
     spec = FIELDS[field]
     if spec['type'] == 'postcode': return isinstance(value, str) and bool(re.fullmatch(spec['validation']['pattern'], value))
     if spec['type'] == 'boolean': return type(value) is bool
+    if spec['type'] == 'text':
+        return (isinstance(value, str) and 1<=len(value)<=60 and bool(NAME_PATTERN.fullmatch(value))
+            and value.lower() not in YES_TERMS and value.lower() not in NO_TERMS)
     return value in spec['choices'] if isinstance(value, str) else False
 
 def display(value):
     return ('yes' if value else 'no') if type(value) is bool else str(value)
+
+def transcript(s):
+    # What was actually said, in order. Caller lines are already redacted and sanitized.
+    return [{'role': e['kind'], 'text': e['content'], 'turn': e['turn'], 'at': e['at']}
+            for e in s['events'] if e['kind'] in ('assistant', 'caller')]
+
+def applicable(s, key):
+    # A conditional field (e.g. bill amount vs household estimate) only becomes part
+    # of the journey once its trigger field is answered a specific way.
+    dep = FIELDS[key].get('depends_on')
+    if not dep: return True
+    seen = s['fields'].get(dep['field'])
+    return seen is not None and seen['value'] == dep['equals']
 
 class Store:
     """Request-local working state. Spring Boot owns all durable PostgreSQL writes."""
@@ -83,9 +153,12 @@ class Store:
 
     def submit(self, s):
         # Local mock journey-completion adapter. Lead ID is the demo journey's idempotency key.
-        assert s['consent'] and all(k in s['fields'] and valid(k, s['fields'][k]['value']) for k in FIELDS)
+        assert s['consent'] and all(k in s['fields'] and valid(k, s['fields'][k]['value'])
+            for k in FIELDS if applicable(s, k))
+        # The receipt carries the call record with the answers: transcript and notes, not audio.
         payload = {'schema_version': SCRIPTS['version'], 'lead_id': s['lead_id'], 'vertical': 'energy',
-                   'consent': True, 'fields': {k:v['value'] for k,v in s['fields'].items()}}
+                   'consent': True, 'fields': {k:v['value'] for k,v in s['fields'].items()},
+                   'notes': copy.deepcopy(s.get('notes', [])), 'transcript': transcript(s)}
         receipt = 'mock-'+uuid.uuid4().hex[:12]
         self.receipts.setdefault(s['lead_id'], {'id':receipt, 'adapter':'local-mock', 'payload':payload})
         return copy.deepcopy(self.receipts[s['lead_id']])
@@ -104,14 +177,31 @@ class Supervisor:
             s = {'id':uuid.uuid4().hex, 'lead_id':lead, 'state':'consent', 'consent':False,
                  'fields':{}, 'pending':None, 'failures':{}, 'events':[], 'signals':[], 'seen':{},
                  'turn':0, 'created_at':now(), 'revision':0, 'anger_count':0,
-                 'mode':'model-assisted' if self.model else 'deterministic-demo', 'receipt':None, 'handoff':None, 'analysis':None, 'script_version':SCRIPTS['version'], 'sections_introduced':[]}
+                 'mode':'model-assisted' if self.model else 'deterministic-demo', 'receipt':None, 'handoff':None, 'analysis':None, 'script_version':SCRIPTS['version'], 'sections_introduced':[],
+                 'notes':[], 'noted_signals':[], 'summary':None}
             for k,v in (seed or {}).items():
                 if k not in FIELDS or not valid(k,v): raise ValueError('Invalid seed field')
                 s['fields'][k] = {'value':v, 'source':'synthetic-lead', 'confirmed':True, 'turn':0}
             self.event(s, 'gate', 'Synthetic lead and local DNC check passed; external DNC stub.')
-            self.say(s, SCRIPTS['opening'])
+            self.note(s, 'call', 'Recovery call opened on a synthetic lead.')
+            for k, v in s['fields'].items():
+                self.note(s, 'detail', FIELDS[k]['label']+': '+display(v['value'])+' (carried over from the earlier journey)')
+            self.say(s, pick(SCRIPTS['opening']))
             self.store.save(s)
             return s
+
+    def note(self, s, kind, text):
+        s.setdefault('notes', []).append({'at':now(), 'turn':s['turn'], 'kind':kind, 'text':text})
+
+    def finalize(self, s):
+        # The record the operator reads after the call: what was said, noted and submitted.
+        s['summary'] = {'session_id':s['id'], 'lead_id':s['lead_id'], 'outcome':s['state'],
+            'ended_at':now(), 'consent':s['consent'], 'script_version':s.get('script_version'),
+            'fields':[{'key':k, 'label':FIELDS[k]['label'], 'value':display(s['fields'][k]['value'])}
+                      for k in FIELDS if k in s['fields']],   # Script order, with the spoken label.
+            'handoff_reason':(s.get('handoff') or {}).get('reason'),
+            'notes':copy.deepcopy(s.get('notes', [])), 'transcript':transcript(s),
+            'receipt':copy.deepcopy(s.get('receipt'))}
 
     def event(self, s, kind, content):
         s['events'].append({'at':now(), 'turn':s['turn'], 'kind':kind, 'content':content})
@@ -126,7 +216,18 @@ class Supervisor:
         self.event(s, 'assistant', message)
 
     def next_field(self, s):
-        return next((k for k in FIELDS if k not in s['fields']), None)
+        return next((k for k in FIELDS if k not in s['fields'] and applicable(s, k)), None)
+
+    def reconcile(self, s):
+        # A changed answer can make an already-collected conditional field stale
+        # (e.g. a bill amount collected while has_bill=true, after it flips to false).
+        changed = True
+        while changed:
+            changed = False
+            for k in list(s['fields']):
+                if not applicable(s, k):
+                    del s['fields'][k]
+                    changed = True
 
     def ask_next(self, s):
         f = self.next_field(s)
@@ -137,7 +238,7 @@ class Supervisor:
             prefix=''
             if section['id'] not in introductions:
                 if not introductions and s['fields']: prefix=line('resume')+' '
-                prefix+=section['intro']+' '
+                prefix+=pick(section['intro'])+' '
                 introductions.append(section['id'])
             self.say(s, prefix+FIELDS[f]['question'])
         else:
@@ -145,15 +246,19 @@ class Supervisor:
             summary = '; '.join(FIELDS[k]['label']+': '+display(v['value']) for k,v in s['fields'].items())
             self.say(s, line('review',summary=summary))
 
-    def close(self, s, state, message):
+    def close(self, s, state, message, note=None):
         s['state']=state
         s['pending']=None
+        note = note or OUTCOME_NOTES.get(state)
+        if note: self.note(s,'outcome',note)
         self.say(s,message)
+        self.finalize(s)
 
     def handover(self, s, reason):
         if s['state']=='handoff_pending':
             return self.say(s,line('handoff_pending'))
         s['state']='handoff_pending'
+        self.note(s,'escalation','Handover to an energy specialist: '+reason.replace('_',' ')+'.')
         s['handoff']={'reason':reason, 'queue':'energy-specialist', 'status':'awaiting_acceptance',
             'lead_id':s['lead_id'], 'session_id':s['id'], 'consent':s['consent'],
             'confirmed_fields':copy.deepcopy(s['fields']), 'unconfirmed':copy.deepcopy(s['pending']),
@@ -220,6 +325,11 @@ class Supervisor:
                     'turn':s['turn'],'source':item['source']})
             if payment:
                 for item in s['analysis']['signals']: item['evidence']='[withheld]'
+            noted = s.setdefault('noted_signals', [])
+            for item in detected:
+                if item['label'] in SIGNAL_NOTES and item['label'] not in noted:
+                    noted.append(item['label'])
+                    self.note(s, 'concern', SIGNAL_NOTES[item['label']])
             if s['consent']: self.event(s,'caller',safe_text)
             self._advance(s,text,[item['label'] for item in detected],confidence,result,status)
             self.store.save(s)
@@ -230,7 +340,7 @@ class Supervisor:
         if 'dnc' in detected:
             self.store.suppress(s['lead_id'])
             return self.close(s,'suppressed',line('suppressed'))
-        if 'decline' in detected or (s['state']=='consent' and NO.fullmatch(t)):
+        if 'decline' in detected or (s['state']=='consent' and is_no(t)):
             return self.close(s,'declined',line('declined'))
         if 'human' in detected: return self.handover(s,'explicit_human_request')
         if 'payment' in detected: return self.handover(s,'payment_boundary')
@@ -260,32 +370,39 @@ class Supervisor:
         if not t or (confidence is not None and confidence<0.65):
             return self.repair(s,key,line('misheard',question=self.current_question(s)))
         if s['state']=='consent':
-            if YES.fullmatch(t):
+            if is_yes(t):
                 s['consent']=True
                 self.event(s,'consent','Explicit affirmative consent; transcript storage enabled; audio recording disabled.')
+                self.note(s,'consent','Consent given to continue and store the transcript. No audio is recorded.')
                 return self.ask_next(s)
             return self.repair(s,'consent',line('consent_clarification'))
         if s['state']=='confirming':
             pending=s['pending']; f=pending['field']
-            if YES.fullmatch(t):
+            if is_yes(t) or self.affirmed(result,'yes'):
                 s['fields'][f]={'value':pending['value'],'confirmed':True,'source':pending['source'],'turn':s['turn']}
                 s['pending']=None
+                self.note(s,'detail',FIELDS[f]['label']+': '+display(pending['value'])+' (confirmed by the caller)')
+                self.reconcile(s)
                 return self.ask_next(s)
-            if NO.fullmatch(t):
+            if is_no(t) or self.affirmed(result,'no'):
                 s['pending']=None; s['state']='collecting'
+                self.note(s,'detail',FIELDS[f]['label']+': the read-back was wrong; asked again.')
                 return self.repair(s,f,line('correction',question=FIELDS[f]['clarification']))
             return self.repair(s,f,line('confirm_clarification',question=self.current_question(s)))
         if s['state']=='review':
-            if YES.fullmatch(t):
+            if is_yes(t) or self.affirmed(result,'yes'):
                 try: s['receipt']=self.store.submit(s)
                 except Exception:
                     return self.handover(s,'submission_failure')
-                return self.close(s,'completed',line('completed'))
+                return self.close(s,'completed',line('completed'),
+                    'Details submitted for further processing. Receipt '+s['receipt']['id']+' ('+s['receipt']['adapter']+').')
             changes=[k for k in FIELDS if k in t or FIELDS[k]['label'].lower() in t]
             if len(changes)==1:
+                self.note(s,'detail',FIELDS[changes[0]]['label']+': caller asked to change this before submitting.')
                 del s['fields'][changes[0]]
+                self.reconcile(s)
                 return self.ask_next(s)
-            if NO.fullmatch(t): return self.close(s,'declined',line('submit_declined'))
+            if is_no(t) or self.affirmed(result,'no'): return self.close(s,'declined',line('submit_declined'))
             return self.repair(s,'review',line('review_clarification',field_names=', '.join(FIELDS)))
         f=self.next_field(s)
         value=parse_value(f,text); source='rules'
@@ -297,6 +414,11 @@ class Supervisor:
         s['pending']={'field':f,'value':value,'source':source}
         s['state']='confirming'
         self.say(s,FIELDS[f]['confirmation'].format(value=display(value)))
+
+    def affirmed(self,result,answer):
+        # Only the model reads paraphrased yes/no; the regex is not the only path.
+        confirmation = (result or {}).get('confirmation')
+        return bool(confirmation) and confirmation['answer']==answer and confirmation['confidence']>=CONFIRM_CONFIDENCE
 
     def current_question(self,s):
         if s['state']=='consent': return line('consent_question')
@@ -312,7 +434,9 @@ class Supervisor:
             s['handoff']['status']='accepted'; s['handoff']['agent']=agent[:60]
             s['handoff']['accepted_at']=now(); s['state']='human'; s['revision']+=1
             self.event(s,'handoff','Human accepted; AI no longer owns the conversation.')
+            self.note(s,'outcome','Energy specialist accepted the call; the AI stopped. Nothing was submitted.')
             s['message']='Human accepted the context. AI conversation stopped.'
+            self.finalize(s)
             self.store.save(s); return s
 
     def unavailable(self,sid):
@@ -321,5 +445,5 @@ class Supervisor:
             if s['state'] in TERMINAL: return s
             if s['state']!='handoff_pending': raise ValueError('No pending handoff')
             s['handoff']['status']='unavailable'; s['revision']+=1
-            self.close(s,'callback',line('unavailable'))
+            self.close(s,'callback','No specialist was available; a call back was offered.')
             self.store.save(s); return s
