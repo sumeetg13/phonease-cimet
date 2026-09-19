@@ -6,6 +6,11 @@ Energy recovery conversation workspace, rebuilt from the CIMET reference using *
 
 <img width="1706" height="955" alt="Screenshot 2026-09-19 at 4 36 39 PM" src="https://github.com/user-attachments/assets/4b88bd35-f709-47bf-b7e8-277f9929abde" />
 
+
+## Architecture 
+
+<img width="2234" height="1054" alt="image" src="https://github.com/user-attachments/assets/80a14e4a-6d7e-488f-a937-aa47c2355cc8" />
+
 ## Run
 
 Install and start Docker Desktop. Python 3.9+ is used by the local configuration helper; all application runtimes and dependencies run inside containers.
