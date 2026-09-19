@@ -2,6 +2,10 @@
 
 Energy recovery conversation workspace, rebuilt from the CIMET reference using **Java Spring Boot, PostgreSQL, Python LangChain/LangGraph and React**. This is a separate project; it does not import or run files from CIMET.
 
+<img width="1706" height="955" alt="Screenshot 2026-09-19 at 4 29 02 PM" src="https://github.com/user-attachments/assets/536f65b1-fab8-4172-9927-8e5a04229473" />
+
+<img width="1706" height="955" alt="Screenshot 2026-09-19 at 4 36 39 PM" src="https://github.com/user-attachments/assets/4b88bd35-f709-47bf-b7e8-277f9929abde" />
+
 ## Run
 
 Install and start Docker Desktop. Python 3.9+ is used by the local configuration helper; all application runtimes and dependencies run inside containers.
