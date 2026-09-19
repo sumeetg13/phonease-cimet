@@ -57,6 +57,13 @@ public class SessionService {
             if (!payload.has("lead_id")) payload.put("lead_id","synthetic-"+UUID.randomUUID());
             String lead=required(payload,"lead_id");
             if (suppressed(lead)) throw new IllegalArgumentException("Lead suppressed");
+            var names=db.query("SELECT name FROM leads WHERE id=? AND queued", (rs,n)->rs.getString(1), lead);
+            if (!names.isEmpty()) {
+                ObjectNode seed=payload.has("seed") && payload.get("seed").isObject()
+                    ? (ObjectNode) payload.get("seed") : mapper.createObjectNode();
+                seed.put("name",names.getFirst());
+                payload.set("seed",seed);
+            }
             ObjectNode session=decide("start",null,payload);
             save(session); return session;
         });
@@ -77,6 +84,7 @@ public class SessionService {
     public ObjectNode action(String operation, ObjectNode payload) {
         String id=required(payload,"session_id");
         return mutate(id, s-> {
+            if (operation.equals("end") && s.hasNonNull("call_sid")) throw new IllegalArgumentException("End telephone calls through the telephone provider");
             if (operation.equals("accept") && s.hasNonNull("call_sid")) throw new IllegalArgumentException("Telephone human must accept with DTMF");
             if (operation.equals("turn")) {
                 required(payload,"text",true); required(payload,"event_id");

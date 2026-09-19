@@ -20,4 +20,5 @@ public class ApiController {
     @PostMapping("/api/turn") public ObjectNode turn(@RequestBody ObjectNode payload) { return sessions.action("turn",payload); }
     @PostMapping("/api/accept") public ObjectNode accept(@RequestBody ObjectNode payload) { return sessions.action("accept",payload); }
     @PostMapping("/api/unavailable") public ObjectNode unavailable(@RequestBody ObjectNode payload) { return sessions.action("unavailable",payload); }
+    @PostMapping("/api/end") public ObjectNode end(@RequestBody ObjectNode payload) { return sessions.action("end",payload); }
 }

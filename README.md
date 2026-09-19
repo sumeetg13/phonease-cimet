@@ -23,7 +23,41 @@ The setup helper never overwrites an existing `.env`. For an explicitly chosen e
 
 After changing configuration, rerun the launcher. No model key means local rules; a configured but failed model triggers handover. No telephone call occurs on startup.
 
+## Seed demo leads
+
+Flyway runs automatically when the backend starts. A fresh database receives **50 synthetic queued leads**, each with a stable `synthetic-lead-*` ID, a name and an illustrative phone number. No separate seed command or SQL client is required.
+
+| Migration | Seed behavior |
+|---|---|
+| [V2__persist_lead_queue.sql](backend/src/main/resources/db/migration/V2__persist_lead_queue.sql) | Creates the lead table and status view, seeds the original five leads, and links existing session history. |
+| [V3__seed_fifty_demo_leads.sql](backend/src/main/resources/db/migration/V3__seed_fifty_demo_leads.sql) | Adds 45 more leads, bringing the supplied demo set to 50. |
+
+For a new checkout, start Docker Desktop and run:
+
+```sh
+python3 scripts/setup.py
+./scripts/run.sh --no-open
+```
+
+For an existing installation, rerun `./scripts/run.sh --no-open`. It rebuilds the backend with the new migration and applies only pending Flyway versions to the existing PostgreSQL database. Existing lead details, queue choices, sessions, handoffs and suppression records are preserved. Flyway records applied versions in `flyway_schema_history`; the seed also uses `ON CONFLICT (id) DO NOTHING` to avoid duplicate IDs or overwriting edited leads. Additional user-created records are retained, so an existing database may contain more than 50 leads.
+
+Open http://127.0.0.1:5173 to see the queue. On a fresh database, the dashboard shows **50 total leads, 50 remaining, 0 AI calls done and 0 human handoffs**. The seed inserts identities only: new leads are uncalled, and their call/handoff statuses change as sessions are saved. Existing installations keep their actual call history, so their totals may differ. The sample phone numbers are illustrative data for browser/text demos; telephone calling still uses the configured approved-number list.
+
+To verify the seed and status calculations against a running PostgreSQL service:
+
+```sh
+python3 scripts/test_dashboard.py
+```
+
+The check covers fresh installation, upgrade, duplicate prevention and preservation of edited leads/history in isolated schemas, then rolls back its fixtures. To change the supplied seed in the future, add a new numbered Flyway migration; do not edit migrations already applied to a database. Restarting the app does not reset demo data or replay applied seeds.
+
 ## Use the workspace
+
+The dashboard and lead queue read PostgreSQL through `/api/dashboard`. Flyway seeds the 50 named demo leads in `leads` and links their existing session history. New ad-hoc sessions also get a lead record but stay outside the queue (`queued=false`). Names and phone numbers are loaded from the database; queued calls use the saved name on the server.
+
+Dashboard totals cover only queued leads: AI calls done counts ended sessions; people remaining counts unsuppressed leads with no session started; human handoffs counts **accepted** handovers only. Each row shows calls started/done, handovers requested/accepted, and the latest outcome. `sessions.call_state`, `sessions.ai_call_done`, and `sessions.handoff_status` are stored PostgreSQL generated columns, updated atomically from the saved session; `lead_activity` supplies the per-lead rollup. Pending, unavailable and cancelled handovers are not accepted handoffs. Browser and text sessions count as AI calls; this does not claim a telephone connection occurred. Browser Hang up saves an ended session. Totals refresh every 15 seconds and after session updates.
+
+Run `python3 scripts/test_dashboard.py` against the running stack to check migration/backfill and status calculations in a transaction-isolated test schema; its fixtures are rolled back.
 
 1. Choose a saved journey snapshot and start a recovery call. By default postcode and energy type are already confirmed.
 2. Answer `yes` to consent, then `rent`, `no`, `no`, confirming each read-back with `yes`.

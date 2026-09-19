@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, START, END
-from .core import Store, Supervisor
+from .core import Store, Supervisor, TERMINAL
 from .model import OpenAIExtractor
 from .script_registry import SCRIPTS
 from .telephony import Twilio
@@ -20,7 +20,7 @@ def authorize(authorization: str = Header(default='')):
         raise HTTPException(401, 'Invalid service credentials')
 
 class Decision(BaseModel):
-    operation: Literal['start', 'turn', 'accept', 'unavailable', 'close']
+    operation: Literal['start', 'turn', 'accept', 'unavailable', 'close', 'end']
     session: dict[str, Any] | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     suppressed: bool = False
@@ -55,6 +55,13 @@ def execute(state):
             session = supervisor.accept(sid, p.get('agent', 'browser-demo-human'))
         elif r.operation == 'unavailable':
             session = supervisor.unavailable(sid)
+        elif r.operation == 'end':
+            session = supervisor.store.get(sid)
+            if session['state'] not in TERMINAL:
+                if (session.get('handoff') or {}).get('status') == 'awaiting_acceptance':
+                    session['handoff']['status'] = 'cancelled'
+                session['revision'] += 1
+                supervisor.close(session, 'ended', 'Call ended by the operator.', 'Operator ended the call. Nothing was submitted.')
         else:
             session = supervisor.store.get(sid)
             supervisor.close(session, 'suppressed', SCRIPTS['messages']['suppressed'])

@@ -5,17 +5,11 @@ import Voice from './voice.js';
 import Call from './call.js';
 import {NOTE_LABELS, clock, started, receiptText, filename} from './record.js';
 import NeuralVoice from './neural-voice.js';
+import Dashboard from './Dashboard.jsx';
 import './style.css';
 
 const terminal=new Set(['completed','declined','suppressed','human','callback','ended']);
 const snapshots={supply:{postcode:'2000',fuel:'electricity'}, postcode:{postcode:'2000'}, property:{postcode:'2000',fuel:'electricity',occupancy:'rent',solar:false}, empty:{}};
-const LEADS=[
- {id:'synthetic-lead-amelia-chen',name:'Amelia Chen',phone:'0491 570 006'},
- {id:'synthetic-lead-daniel-osei',name:'Daniel Osei',phone:'0491 570 118'},
- {id:'synthetic-lead-priya-nair',name:'Priya Nair',phone:'0491 570 226'},
- {id:'synthetic-lead-jack-thompson',name:'Jack Thompson',phone:'0491 570 334'},
- {id:'synthetic-lead-sofia-ricci',name:'Sofia Ricci',phone:'0491 570 442'},
-];
 const scenarios=[['Human request',"I'd like to speak to a human"],['Frustration',"I've already told three of you my details"],['Do not call','Stop calling me'],['Confusion','I do not understand what you mean'],['Distress',"I'm overwhelmed and can't cope with this right now"],['Privacy','Where did you get my number?'],['Hardship',"I can't afford my energy bills"],['Accessibility',"I'm hard of hearing. Please speak slowly"],['Language',"I don't speak English"],['Connection','The line is breaking up'],['Payment',"I'd like to pay by card"],['Advice','Which plan should I choose?'],['Busy',"I'm in a meeting"],['Negated request',"I don't need a human"]];
 const friendly=value=>String(value??'').replaceAll('_',' ');
 function App(){
@@ -47,15 +41,17 @@ function App(){
  const work=async(fn)=>{if(flight.current)return;flight.current=true;setBusy(true);setNotice('');try{await fn();}catch(e){setNotice(e.message);}finally{flight.current=false;setBusy(false);}};
  const apply=(s,read=true)=>{setSession(s);latest.current=s;if(read)speak(s);else resume();};
  const hangUp=()=>{calling.current=false;setOnCall(false);setStage('');setCaption('');call.current?.close();cancelSpeech();};
- const start=()=>work(async()=>{recognition.current?.abort();hangUp();setScript(await api('/api/scripts'));apply(await api('/api/sessions',{seed:snapshots[snapshot]}));setText('');});
+ const endCurrent=async()=>{hangUp();const current=latest.current;if(current&&!terminal.has(current.state)&&!current.call_sid)apply(await api('/api/end',{session_id:current.id}),false);};
+ const endCall=()=>work(endCurrent);
+ const start=()=>work(async()=>{recognition.current?.abort();await endCurrent();setScript(await api('/api/scripts'));apply(await api('/api/sessions',{seed:snapshots[snapshot]}));setText('');});
  // A hands-free call: the assistant speaks, the microphone reopens by itself, and the turn is sent on a pause.
- const startCall=()=>work(async()=>{recognition.current?.abort();hangUp();setScript(await api('/api/scripts'));
+ const startCall=()=>work(async()=>{recognition.current?.abort();await endCurrent();setScript(await api('/api/scripts'));
    const opened=call.current.open();const fresh=await api('/api/sessions',{seed:snapshots[snapshot]});
    if(opened){calling.current=true;setOnCall(true);}
    setText('');apply(fresh);});
  // Click a lead in the queue: same hands-free live call, seeded with that lead's name.
- const callLead=(lead)=>work(async()=>{recognition.current?.abort();hangUp();setScript(await api('/api/scripts'));
-   const opened=call.current.open();const fresh=await api('/api/sessions',{lead_id:lead.id,seed:{name:lead.name}});
+ const callLead=(lead)=>work(async()=>{recognition.current?.abort();await endCurrent();setScript(await api('/api/scripts'));
+   const opened=call.current.open();const fresh=await api('/api/sessions',{lead_id:lead.id});
    if(opened){calling.current=true;setOnCall(true);}
    setText('');apply(fresh);});
  // A turn that cannot be sent must still hand the line back, or the call would stall with a closed microphone.
@@ -77,11 +73,11 @@ function App(){
  const stageLabel={connecting:'Connecting…',listening:'Listening to the caller…',holding:'Assistant speaking…',thinking:'Assistant is thinking…'}[stage]||'';
  return <div className="app"><aside className="rail"><a className="logo" href="/" aria-label="Phonease home"><Phone size={23}/></a><span className="rail-active"><Headphones size={22}/></span><span className="rail-bottom"><ShieldCheck size={21}/></span></aside><div className="shell">
  <header><div className="wordmark">phonease<span> / workspace</span></div><span className="environment"><i/> Synthetic workspace</span><label className="token">API token<input aria-label="API token" type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)}/></label></header>
- <main><div className="page-title"><div><p className="eyebrow">ENERGY RECOVERY</p><h1>Every conversation, continued.</h1><p>Pick up where the customer left off. Keep the context when a person takes over.</p></div><span className="operator"><Headphones size={18}/> Operator console</span></div>
+ <main><div className="page-title"><div><p className="eyebrow">ENERGY RECOVERY</p><h1>Dashboard</h1><p>Your leads, AI calls and human handoffs at a glance.</p></div><span className="operator"><Headphones size={18}/> Operator console</span></div>
+ <Dashboard token={token} sessionId={session?.id} revision={session?.revision} onCallLead={callLead} busy={busy}/>
  <div className="workspace"><section className="panel conversation"><div className="panel-heading"><div><span className="eyebrow">LIVE CONVERSATION</span><h2>Energy assistant</h2></div><span className={'badge '+(session?.state==='completed'?'success':'')}>{session?friendly(session.state):'Ready'}</span></div>
- <div className="leads"><span className="eyebrow">LEADS QUEUE</span><div className="lead-list">{LEADS.map(lead=><button key={lead.id} className="lead-row" disabled={busy} onClick={()=>callLead(lead)}><span className="lead-name">{lead.name}</span><span className="lead-phone">{lead.phone}</span><Phone size={14}/></button>)}</div></div>
  <div className="call-setup"><label>Resume from<select value={snapshot} onChange={e=>setSnapshot(e.target.value)} disabled={busy}><option value="supply">Energy type saved · property next</option><option value="postcode">Postcode saved · energy type next</option><option value="property">Property saved · moving next</option><option value="empty">No saved answers</option></select></label><button className="primary" onClick={startCall} disabled={busy}><Phone size={16}/> Start call <ArrowUpRight size={16}/></button><button onClick={start} disabled={busy}>Text only</button></div>
- <div className="voice-bar"><button onClick={listen} disabled={ended||busy} className={micOn?'listening':''}><Mic size={16}/>{micOn?'Listening…':onCall?'Interrupt & speak':'Speak / interrupt'}</button>{onCall&&<button className="hangup" onClick={hangUp}><PhoneOff size={16}/> Hang up</button>}<button aria-pressed={voice} onClick={()=>{speechEnabled.current=!voice;setVoice(!voice);if(voice)cancelSpeech();}}>{voice?<Volume2 size={16}/>:<VolumeX size={16}/>} Spoken replies {voice?'on':'off'}</button>{session&&<button className="icon-button" onClick={refresh} disabled={busy} aria-label="Refresh session"><RefreshCw size={16}/></button>}</div>
+ <div className="voice-bar"><button onClick={listen} disabled={ended||busy} className={micOn?'listening':''}><Mic size={16}/>{micOn?'Listening…':onCall?'Interrupt & speak':'Speak / interrupt'}</button>{onCall&&<button className="hangup" onClick={endCall} disabled={busy}><PhoneOff size={16}/> Hang up</button>}<button aria-pressed={voice} onClick={()=>{speechEnabled.current=!voice;setVoice(!voice);if(voice)cancelSpeech();}}>{voice?<Volume2 size={16}/>:<VolumeX size={16}/>} Spoken replies {voice?'on':'off'}</button>{session&&<button className="icon-button" onClick={refresh} disabled={busy} aria-label="Refresh session"><RefreshCw size={16}/></button>}</div>
  <div className="voice-settings"><label>Reply voice<select aria-label="Reply voice" value={voiceEngine} disabled={busy} onChange={e=>{cancelSpeech();setVoiceEngine(e.target.value);}}><option value="neural">OpenAI neural voice</option><option value="device">Device voice (offline)</option></select></label><button disabled={!session||busy||!voice||listening||session.state==='human'} onClick={()=>{if(voiceEngine==='neural')neural.current.replay(session);else speak(session);}}>Replay reply</button></div>
  <audio ref={audioElement} preload="auto"/>
  {onCall&&<p className={'call-stage '+(stage||'idle')} role="status"><i/>{stageLabel||'On a call'}</p>}

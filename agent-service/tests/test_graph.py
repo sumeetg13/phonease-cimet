@@ -44,3 +44,22 @@ class GraphTests(unittest.TestCase):
 
     def test_invalid_operation_rejected(self):
         self.assertEqual(self.client.post('/decide',headers=self.headers,json={'operation':'dial'}).status_code,422)
+
+    def test_operator_end_persists_outcome_without_suppression_and_is_idempotent(self):
+        state=graph.invoke({'request':Decision(operation='start')})['session']
+        state=graph.invoke({'request':Decision(operation='end',session=state)})['session']
+        self.assertEqual(state['state'],'ended')
+        self.assertEqual(state['summary']['outcome'],'ended')
+        self.assertEqual(state['revision'],1)
+        again=graph.invoke({'request':Decision(operation='end',session=state)})['session']
+        self.assertEqual(again,state)
+
+    def test_operator_end_cancels_pending_handoff_but_preserves_accepted_outcome(self):
+        state=graph.invoke({'request':Decision(operation='start')})['session']
+        state['state']='handoff_pending'
+        state['handoff']={'status':'awaiting_acceptance','reason':'human_request'}
+        ended=graph.invoke({'request':Decision(operation='end',session=state)})['session']
+        self.assertEqual(ended['handoff']['status'],'cancelled')
+        state['state']='human'
+        state['handoff']['status']='accepted'
+        self.assertEqual(graph.invoke({'request':Decision(operation='end',session=state)})['session'],state)
