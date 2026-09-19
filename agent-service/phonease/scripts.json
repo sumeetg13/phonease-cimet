@@ -1,0 +1,230 @@
+{
+  "version": "energy-demo-v2",
+  "notice": "Draft Energy scripts based on the brief only. Five demo fields are assumptions, pending the recording and official field list.",
+  "opening": "Hello, I'm the automated Phonease Energy assistant. This is a synthetic demo. With your permission, we will process and save a transcript; audio is not recorded by this prototype. May I continue?",
+  "fields": [
+    {
+      "key": "postcode",
+      "label": "Supply postcode",
+      "question": "What is the four digit postcode for the energy supply address?",
+      "type": "postcode",
+      "section": "supply",
+      "purpose": "Identify the supply postcode, not the mailing postcode.",
+      "clarification": "Please say the four postcode digits one at a time. I mean the postcode where the energy will be supplied.",
+      "confirmation": "The supply postcode is {value}. Have I got that right?",
+      "validation": {
+        "pattern": "[0-9]{4}",
+        "description": "Exactly four digits; syntactic validation only, not a serviceability check."
+      },
+      "aliases": {
+        "2000": [
+          "two zero zero zero"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    },
+    {
+      "key": "fuel",
+      "label": "Energy type",
+      "question": "Are you comparing electricity, gas, or both?",
+      "type": "enum",
+      "choices": [
+        "electricity",
+        "gas",
+        "both"
+      ],
+      "section": "supply",
+      "purpose": "Collect which energy services the caller wants to compare.",
+      "clarification": "Is it electricity only, gas only, or both electricity and gas?",
+      "confirmation": "You want to compare {value}. Is that correct?",
+      "validation": {
+        "description": "One of electricity, gas or both."
+      },
+      "aliases": {
+        "electricity": [
+          "electricity",
+          "electricity only",
+          "power",
+          "power only"
+        ],
+        "gas": [
+          "gas",
+          "gas only"
+        ],
+        "both": [
+          "both",
+          "electricity and gas",
+          "gas and electricity"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm",
+      "combination": {
+        "members": [
+          "electricity",
+          "gas"
+        ],
+        "value": "both"
+      }
+    },
+    {
+      "key": "occupancy",
+      "label": "Occupancy",
+      "question": "Do you own or rent the property?",
+      "type": "enum",
+      "choices": [
+        "own",
+        "rent"
+      ],
+      "section": "property",
+      "purpose": "Collect whether the caller owns or rents this property.",
+      "clarification": "For this property, are you the owner or a tenant?",
+      "confirmation": "You {value} the property. Is that correct?",
+      "validation": {
+        "description": "One of own or rent; do not infer from an address."
+      },
+      "aliases": {
+        "own": [
+          "own",
+          "owner",
+          "homeowner",
+          "i own it",
+          "we own it",
+          "i own the property"
+        ],
+        "rent": [
+          "rent",
+          "renting",
+          "tenant",
+          "i rent it",
+          "we rent it",
+          "i rent the property"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    },
+    {
+      "key": "solar",
+      "label": "Solar panels",
+      "question": "Does the property have solar panels?",
+      "type": "boolean",
+      "section": "property",
+      "purpose": "Record whether solar panels are present at the property.",
+      "clarification": "Are there solar panels installed at this property? Please say yes or no.",
+      "confirmation": "Solar panels at the property: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false; an unknown answer must not become false."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "we do",
+          "there are solar panels",
+          "we have solar",
+          "i have solar"
+        ],
+        "false": [
+          "no",
+          "we don't have solar",
+          "there are no solar panels",
+          "no solar",
+          "no panels"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    },
+    {
+      "key": "moving",
+      "label": "Moving home",
+      "question": "Are you moving into this property?",
+      "type": "boolean",
+      "section": "move",
+      "purpose": "Record whether this journey concerns moving into the property.",
+      "clarification": "Is this for a home you are moving into, rather than where you already live?",
+      "confirmation": "Moving into the property: {value}. Is that correct?",
+      "validation": {
+        "description": "Explicit true or false; do not infer a move date."
+      },
+      "aliases": {
+        "true": [
+          "yes",
+          "i am",
+          "we are",
+          "i am moving",
+          "we are moving"
+        ],
+        "false": [
+          "no",
+          "i am not",
+          "we are not",
+          "already live here",
+          "i already live here",
+          "staying here"
+        ]
+      },
+      "required": true,
+      "max_failed_attempts": 2,
+      "unknown_action": "clarify_then_handoff",
+      "capture_policy": "propose_validate_read_back_confirm"
+    }
+  ],
+  "status": "draft-assumptions",
+  "source_material": {
+    "recording": "not supplied",
+    "official_field_list": "not supplied",
+    "sandbox_schema": "not supplied"
+  },
+  "sections": [
+    {
+      "id": "supply",
+      "title": "Energy supply",
+      "intro": "Let's pick up with the energy supply details.",
+      "purpose": "Establish the supply area and energy types to collect for this demo."
+    },
+    {
+      "id": "property",
+      "title": "Property details",
+      "intro": "Next, a couple of details about the property.",
+      "purpose": "Collect occupancy and solar information without giving product advice."
+    },
+    {
+      "id": "move",
+      "title": "Moving plans",
+      "intro": "Finally, let's check whether this is a move.",
+      "purpose": "Identify whether the caller is moving; no dates or commitments are inferred."
+    }
+  ],
+  "messages": {
+    "resume": "We'll keep the details you already confirmed and ask only what's missing.",
+    "review": "Please review: {summary}. May I submit this demo Energy journey? Say yes to submit, or say change followed by the field name.",
+    "review_clarification": "Say yes to submit, or say change followed by one of these fields: {field_names}.",
+    "submit_question": "May I submit the demo journey?",
+    "consent_question": "May I continue with transcript processing?",
+    "consent_clarification": "May I process and save a transcript to continue? Please say yes or no.",
+    "correction": "Let's correct that. {question}",
+    "confirm_clarification": "Please say yes or no. {question}",
+    "capture_clarification": "I couldn't capture that reliably. {question}",
+    "confusion": "Let's take that one step at a time. {question}",
+    "misheard": "I didn't catch that clearly. {question}",
+    "frustration": "I'm sorry this has been frustrating. I can bring in a person, or we can continue with one short question. {question}",
+    "handoff": "I'll ask an Energy specialist to help. I'll pass on the confirmed details and what needs attention so you do not have to start again.",
+    "handoff_pending": "The human handover is pending. You can ask to end the call at any time.",
+    "suppressed": "Understood. I've marked this lead do-not-call. Thank you. Goodbye.",
+    "declined": "Understood. I will end the call. Thank you. Goodbye.",
+    "busy": "Understood. I will end the call and leave a follow-up request for the team. No callback time has been booked. Goodbye.",
+    "completed": "Your demo Energy journey has been submitted successfully. No energy plan has been purchased or switched. Thank you. Goodbye.",
+    "submit_declined": "I will not submit this journey. Thank you. Goodbye.",
+    "unavailable": "A specialist is unavailable. I will leave the context for the team to review. No callback time is booked. Thank you. Goodbye."
+  }
+}

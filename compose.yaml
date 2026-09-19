@@ -1,0 +1,53 @@
+name: phonease
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-phonease}
+      POSTGRES_USER: ${POSTGRES_USER:-phonease}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/setup.py}
+    volumes: [phonease-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  agent:
+    build: ./agent-service
+    environment:
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:?Run scripts/setup.py}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini-2025-04-14}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      HUMAN_TEST_NUMBER: ${HUMAN_TEST_NUMBER:-}
+      TEST_NUMBERS: ${TEST_NUMBERS:-}
+      LANGSMITH_TRACING: 'false'
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-phonease}
+      POSTGRES_USER: ${POSTGRES_USER:-phonease}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PHONEASE_API_TOKEN: ${PHONEASE_API_TOKEN:-local-demo}
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN}
+      AGENT_SERVICE_URL: http://agent:8000
+      TELEPHONY_ENABLED: ${TELEPHONY_ENABLED:-false}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      TEST_NUMBERS: ${TEST_NUMBERS:-}
+    depends_on:
+      postgres: {condition: service_healthy}
+      agent: {condition: service_healthy}
+  frontend:
+    build: ./frontend
+    ports: ['127.0.0.1:${UI_PORT:-5173}:80']
+    depends_on: [backend]
+volumes:
+  phonease-data:

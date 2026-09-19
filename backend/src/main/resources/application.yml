@@ -1,0 +1,20 @@
+server:
+  port: ${PORT:8080}
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/phonease}
+    username: ${POSTGRES_USER:phonease}
+    password: ${POSTGRES_PASSWORD}
+  jackson:
+    deserialization:
+      fail-on-trailing-tokens: true
+phonease:
+  api-token: ${PHONEASE_API_TOKEN}
+  agent-url: ${AGENT_SERVICE_URL:http://localhost:8000}
+  agent-token: ${AGENT_SERVICE_TOKEN}
+  telephony-enabled: ${TELEPHONY_ENABLED:false}
+  public-base-url: ${PUBLIC_BASE_URL:}
+  twilio-account-sid: ${TWILIO_ACCOUNT_SID:}
+  twilio-auth-token: ${TWILIO_AUTH_TOKEN:}
+  twilio-from-number: ${TWILIO_FROM_NUMBER:}
+  test-numbers: ${TEST_NUMBERS:}
